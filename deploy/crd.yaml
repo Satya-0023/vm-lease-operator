@@ -1,0 +1,64 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: openstackvms.vmlease.io
+spec:
+  group: vmlease.io
+  scope: Namespaced
+  names:
+    kind: OpenStackVM
+    plural: openstackvms
+    singular: openstackvm
+    shortNames: [osvm]
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}          # status is written through /status, so users cannot fake it with kubectl edit
+      additionalPrinterColumns:
+        - {name: Phase, type: string, jsonPath: .status.phase}
+        - {name: IP, type: string, jsonPath: .status.ip}
+        - {name: Expires, type: string, jsonPath: .status.expiresAt}
+        - {name: Server, type: string, jsonPath: .status.serverId, priority: 1}
+        - {name: Age, type: date, jsonPath: .metadata.creationTimestamp}
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required: [flavor, image, ttl]
+              properties:
+                flavor:
+                  type: string
+                  description: Nova flavor name or ID, e.g. m1.small
+                image:
+                  type: string
+                  description: Glance image name or ID, e.g. cirros
+                network:
+                  type: string
+                  description: Neutron network name or ID (optional)
+                ttl:
+                  type: string
+                  pattern: '^([0-9]+d)?([0-9]+h)?([0-9]+m)?([0-9]+s)?$'
+                  minLength: 2
+                  description: Lease length from creation, e.g. 30m, 8h, 2d. Raise it to extend the lease.
+                onExpiry:
+                  type: string
+                  enum: [Delete, Stop]
+                  default: Delete
+                  description: Delete the VM, or just power it off, when the lease ends
+              x-kubernetes-validations:
+                # Changing these would need a rebuild or resize in Nova; we keep scope small and refuse it.
+                - rule: "self.flavor == oldSelf.flavor && self.image == oldSelf.image && has(self.network) == has(oldSelf.network) && (!has(self.network) || self.network == oldSelf.network)"
+                  message: flavor, image and network are immutable; create a new OpenStackVM instead
+            status:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
+              properties:
+                phase: {type: string}
+                serverId: {type: string}
+                ip: {type: string}
+                expiresAt: {type: string}
+                message: {type: string}

@@ -1,0 +1,95 @@
+# Everything the operator needs to run inside the cluster, in namespace vmlease-system.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vmlease-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vmlease-operator
+  namespace: vmlease-system
+---
+# Least privilege: only what kopf and our handlers actually call.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vmlease-operator
+rules:
+  - apiGroups: [vmlease.io]
+    resources: [openstackvms]
+    verbs: [get, list, watch, patch]          # patch: kopf adds/removes the finalizer
+  - apiGroups: [vmlease.io]
+    resources: [openstackvms/status]
+    verbs: [get, patch]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create]
+  - apiGroups: [""]
+    resources: [namespaces]
+    verbs: [list, watch]                       # --all-namespaces
+  - apiGroups: [apiextensions.k8s.io]
+    resources: [customresourcedefinitions]
+    verbs: [list, watch]                       # kopf discovers the CRD at startup
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vmlease-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vmlease-operator
+subjects:
+  - kind: ServiceAccount
+    name: vmlease-operator
+    namespace: vmlease-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vmlease-operator
+  namespace: vmlease-system
+spec:
+  replicas: 1          # one active operator: no leader election yet, two copies would both act on every VM
+  strategy:
+    type: Recreate     # never two copies reconciling the same VMs during a rollout
+  selector:
+    matchLabels: {app: vmlease-operator}
+  template:
+    metadata:
+      labels: {app: vmlease-operator}
+    spec:
+      serviceAccountName: vmlease-operator
+      containers:
+        - name: operator
+          image: vmlease-operator:dev
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef: {name: openstack-credentials}   # OS_AUTH_URL, OS_USERNAME, ...
+          env:
+            - {name: RECONCILE_INTERVAL, value: "10"}
+          ports:
+            - {name: metrics, containerPort: 9100}
+            - {name: health, containerPort: 8080}
+          livenessProbe:
+            httpGet: {path: /healthz, port: health}
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {memory: 256Mi}
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vmlease-operator-metrics
+  namespace: vmlease-system
+spec:
+  selector: {app: vmlease-operator}
+  ports:
+    - {name: metrics, port: 9100, targetPort: metrics}

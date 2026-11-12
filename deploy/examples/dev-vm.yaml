@@ -1,0 +1,11 @@
+apiVersion: vmlease.io/v1alpha1
+kind: OpenStackVM
+metadata:
+  name: dev-box
+  namespace: default
+spec:
+  flavor: m1.small
+  image: cirros
+  network: private
+  ttl: 2h            # gone in two hours unless someone raises this
+  onExpiry: Delete

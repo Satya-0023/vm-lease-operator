@@ -1,0 +1,53 @@
+# Demo only: the in-memory fake OpenStack, plus credentials that point the operator at it.
+# For a real cloud, skip this file and create the secret from your openrc values instead
+# (see README "Using a real OpenStack").
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fakestack
+  namespace: vmlease-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: fakestack}
+  template:
+    metadata:
+      labels: {app: fakestack}
+    spec:
+      containers:
+        - name: fakestack
+          image: fakestack:dev
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: FAKESTACK_BUILD_SECONDS, value: "5"}
+          ports:
+            - {name: http, containerPort: 5000}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fakestack
+  namespace: vmlease-system
+spec:
+  selector: {app: fakestack}
+  ports:
+    - {name: http, port: 5000, targetPort: http}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openstack-credentials
+  namespace: vmlease-system
+type: Opaque
+stringData:
+  OS_AUTH_URL: http://fakestack.vmlease-system.svc:5000/identity/v3
+  OS_USERNAME: demo
+  OS_PASSWORD: secret
+  OS_PROJECT_NAME: demo
+  OS_USER_DOMAIN_NAME: Default
+  OS_PROJECT_DOMAIN_NAME: Default
