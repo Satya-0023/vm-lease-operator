@@ -1,5 +1,7 @@
 # vm-lease-operator
 
+[![CI](https://github.com/Satya-0023/vm-lease-operator/actions/workflows/ci.yml/badge.svg)](https://github.com/Satya-0023/vm-lease-operator/actions/workflows/ci.yml)
+
 A Kubernetes operator that manages **OpenStack virtual machines with an expiry lease**.
 
 You describe a VM as a Kubernetes object, with how long you need it:
